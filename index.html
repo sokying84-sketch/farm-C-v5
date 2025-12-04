@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ShroomTrack ERP</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            colors: {
+              earth: {
+                50: 'var(--earth-50)',
+                100: 'var(--earth-100)',
+                200: 'var(--earth-200)',
+                300: 'var(--earth-300)',
+                400: 'var(--earth-400)',
+                500: 'var(--earth-500)',
+                600: 'var(--earth-600)',
+                700: 'var(--earth-700)',
+                800: 'var(--earth-800)',
+                900: 'var(--earth-900)',
+              },
+              nature: {
+                50: 'var(--nature-50)',
+                100: 'var(--nature-100)',
+                500: 'var(--nature-500)',
+                600: 'var(--nature-600)',
+                700: 'var(--nature-700)',
+                800: 'var(--nature-800)',
+                900: 'var(--nature-900)',
+              }
+            }
+          }
+        }
+      }
+    </script>
+    <style>
+      /* Custom scrollbar for better aesthetics */
+      ::-webkit-scrollbar {
+        width: 8px;
+        height: 8px;
+      }
+      ::-webkit-scrollbar-track {
+        background: #fdfbf7; 
+      }
+      ::-webkit-scrollbar-thumb {
+        background: #d1b6aa; 
+        border-radius: 4px;
+      }
+      ::-webkit-scrollbar-thumb:hover {
+        background: #b0897a; 
+      }
+
+      /* Pastel Theme Variables (Soft Clay & Sage) */
+      :root {
+        /* Earth: Soft Clay / Rosy Taupe / Warm Grey */
+        --earth-50: #faf7f5;  /* Off-white / Cream */
+        --earth-100: #efe6e1; /* Pale Clay */
+        --earth-200: #e0cec5; /* Light Taupe */
+        --earth-300: #d1b6aa; /* Muted Sand */
+        --earth-400: #c29f90; /* Pastel Rosy Brown */
+        --earth-500: #b0897a; /* Soft Clay (Primary) */
+        --earth-600: #947164; /* Darker Clay (Hover) */
+        --earth-700: #785a4f;
+        --earth-800: #654d45; /* Deep Coffee (Sidebar/Buttons) */
+        --earth-900: #4a3631; /* Almost Black Brown */
+
+        /* Nature: Soft Sage / Mint / Pastel Green */
+        --nature-50: #f2fbf7;  /* Mint Cream */
+        --nature-100: #ddf4e8; /* Pale Sage */
+        --nature-500: #8ebfa6; /* Pastel Sage (Primary) */
+        --nature-600: #6da388; /* Deep Sage (Hover) */
+        --nature-700: #4f8269;
+        --nature-800: #39634e;
+        --nature-900: #234234;
+      }
+    </style>
+  <script type="importmap">
+{
+  "imports": {
+    "react/": "https://aistudiocdn.com/react@^19.2.0/",
+    "react": "https://aistudiocdn.com/react@^19.2.0",
+    "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.0/",
+    "lucide-react": "https://aistudiocdn.com/lucide-react@^0.555.0",
+    "firebase/app": "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js",
+    "firebase/auth": "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js",
+    "firebase/firestore": "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js",
+    "firebase/storage": "https://www.gstatic.com/firebasejs/10.8.0/firebase-storage.js",
+    "firebase/": "https://aistudiocdn.com/firebase@^12.6.0/",
+    "@vitejs/plugin-react": "https://aistudiocdn.com/@vitejs/plugin-react@^5.1.1",
+    "vite": "https://aistudiocdn.com/vite@^7.2.4"
+  }
+}
+</script>
+</head>
+  <body class="bg-slate-50 text-slate-900 font-sans antialiased h-screen overflow-hidden">
+    <div id="root" class="h-full flex flex-col"></div>
+    <script type="module" src="/index.tsx"></script>
+  </body>
+</html>
