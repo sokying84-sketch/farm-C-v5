@@ -770,6 +770,12 @@ export const packRecipeFIFO = async (
 
 export const getFinishedGoods = async (forceRemote = false): Promise<ApiResponse<FinishedGood[]>> => {
   const colRef = getUserCollection('finished_goods');
+  
+  // OPTIMIZATION: If we just wrote to cache, return cache to prevent flicker
+  if (!forceRemote && (Date.now() - lastWriteTime < WRITE_BUFFER_MS)) {
+      return { success: true, data: [...mockFinishedGoods] };
+  }
+
   if (colRef) {
       const snap = await getDocs(colRef);
       const data = snap.docs.map(d => d.data() as FinishedGood);
@@ -799,12 +805,13 @@ export const updateFinishedGoodImage = async (recipeName: string, packagingType:
       }
   }
 
+  // 1. Update Local Cache Immediately
   mockFinishedGoods.forEach(fg => {
     if (fg.recipeName === recipeName && fg.packagingType === packagingType) fg.imageUrl = imageUrl;
   });
+  lastWriteTime = Date.now();
 
-  // Sync all matching Finished Goods in Firestore
-  // Ideally this would be a batch update
+  // 2. Sync to Firestore
   const user = auth.currentUser;
   if (user) {
     const q = query(
@@ -822,10 +829,29 @@ export const updateFinishedGoodImage = async (recipeName: string, packagingType:
 };
 
 export const updateFinishedGoodPrice = async (recipeName: string, packagingType: string, price: number): Promise<ApiResponse<boolean>> => {
+  // 1. Update Local Cache Immediately (FIX FOR UI LAG)
+  let updatedCount = 0;
   mockFinishedGoods.forEach(fg => {
-    if (fg.recipeName === recipeName && fg.packagingType === packagingType) fg.sellingPrice = price;
+    if (fg.recipeName === recipeName && fg.packagingType === packagingType) {
+        fg.sellingPrice = price;
+        updatedCount++;
+    }
   });
-  return { success: true, message: "Price updated" };
+  
+  // Set buffer so the next read prefers this local data
+  lastWriteTime = Date.now();
+
+  // 2. Sync to Firestore
+  try {
+      const q = query(collection(db, 'finished_goods'), where("recipeName", "==", recipeName), where("packagingType", "==", packagingType));
+      const snap = await getDocs(q);
+      const updatePromises = snap.docs.map(d => updateDoc(d.ref, { sellingPrice: price }));
+      await Promise.all(updatePromises);
+      return { success: true, message: `Price updated for ${updatedCount} items` };
+  } catch (e: any) {
+      console.error("Price update failed:", e);
+      return { success: false, message: e.message };
+  }
 };
 
 // ============================================================================
@@ -1115,33 +1141,52 @@ export const getSales = async (forceRemote = false): Promise<ApiResponse<SalesRe
 
 export const createSale = async (
   customerId: string, 
-  finishedGoodId: string, 
-  qty: number, 
-  unitPrice: number, 
+  items: { finishedGoodId: string, quantity: number, unitPrice: number }[], 
   paymentMethod: PaymentMethod
 ): Promise<ApiResponse<SalesRecord>> => {
   
-  const sampleGood = mockFinishedGoods.find(f => f.id === finishedGoodId);
-  if (!sampleGood) return { success: false, message: "Product not found" };
+  const finalItems = [];
+  let calculatedTotal = 0;
 
-  const matchingGoods = mockFinishedGoods
-      .filter(f => f.recipeName === sampleGood.recipeName && f.packagingType === sampleGood.packagingType && f.quantity > 0)
-      .sort((a,b) => new Date(a.datePacked).getTime() - new Date(b.datePacked).getTime());
+  // 1. Validate & Deduct Stock for ALL items
+  for (const lineItem of items) {
+      const sampleGood = mockFinishedGoods.find(f => f.id === lineItem.finishedGoodId);
+      if (!sampleGood) return { success: false, message: `Product ID ${lineItem.finishedGoodId} not found` };
 
-  let toDeduct = qty;
-  // IMPORTANT: We need to update multiple finished goods docs if spread across batches
-  for (const item of matchingGoods) {
-      if (toDeduct <= 0) break;
-      const take = Math.min(item.quantity, toDeduct);
-      item.quantity -= take;
-      toDeduct -= take;
+      const matchingGoods = mockFinishedGoods
+          .filter(f => f.recipeName === sampleGood.recipeName && f.packagingType === sampleGood.packagingType && f.quantity > 0)
+          .sort((a,b) => new Date(a.datePacked).getTime() - new Date(b.datePacked).getTime());
+
+      let toDeduct = lineItem.quantity;
       
-      // Update Finished Good in Firestore
-      const fgDoc = getUserDoc('finished_goods', item.id);
-      if (fgDoc) await updateDoc(fgDoc, { quantity: item.quantity });
-  }
+      // Check total availability first
+      const totalAvailable = matchingGoods.reduce((sum, item) => sum + item.quantity, 0);
+      if (totalAvailable < toDeduct) {
+          return { success: false, message: `Insufficient stock for ${sampleGood.recipeName}. Requested: ${toDeduct}, Available: ${totalAvailable}` };
+      }
 
-  if (toDeduct > 0) return { success: false, message: "Insufficient stock" };
+      // Perform Deduction
+      for (const stockBatch of matchingGoods) {
+          if (toDeduct <= 0) break;
+          const take = Math.min(stockBatch.quantity, toDeduct);
+          stockBatch.quantity -= take;
+          toDeduct -= take;
+          
+          const fgDoc = getUserDoc('finished_goods', stockBatch.id);
+          if (fgDoc) await updateDoc(fgDoc, { quantity: stockBatch.quantity });
+      }
+
+      // Add to final record
+      finalItems.push({
+          finishedGoodId: lineItem.finishedGoodId,
+          recipeName: sampleGood.recipeName,
+          packagingType: sampleGood.packagingType,
+          quantity: lineItem.quantity,
+          unitPrice: lineItem.unitPrice
+      });
+      
+      calculatedTotal += (lineItem.quantity * lineItem.unitPrice);
+  }
 
   const customer = mockCustomers.find(c => c.id === customerId);
   const newSale: SalesRecord = {
@@ -1151,18 +1196,13 @@ export const createSale = async (
     customerName: customer ? customer.name : 'Unknown',
     customerEmail: customer?.email,
     customerPhone: customer?.contact,
-    items: [{
-      finishedGoodId: finishedGoodId,
-      recipeName: sampleGood.recipeName,
-      packagingType: sampleGood.packagingType,
-      quantity: qty,
-      unitPrice
-    }],
-    totalAmount: qty * unitPrice,
+    items: finalItems,
+    totalAmount: calculatedTotal,
     paymentMethod,
     status: 'INVOICED',
     dateCreated: new Date().toISOString()
   };
+
   mockSales.unshift(newSale);
   lastWriteTime = Date.now();
 
