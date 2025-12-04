@@ -1,4 +1,4 @@
-import { MushroomBatch, BatchStatus, ApiResponse, InventoryItem, PurchaseOrder, SalesRecord, Customer, FinishedGood, SalesStatus, PaymentMethod, DailyCostMetrics, Supplier, Recipe, UserRole } from '../types';
+import { MushroomBatch, BatchStatus, ApiResponse, InventoryItem, PurchaseOrder, SalesRecord, Customer, FinishedGood, SalesStatus, PaymentMethod, DailyCostMetrics, Supplier, Recipe, UserRole, Budget } from '../types';
 import { db, auth, storage } from './firebase';
 import { collection, doc, setDoc, getDocs, updateDoc, deleteDoc, query, orderBy, where, serverTimestamp, addDoc, getDoc } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
@@ -1038,6 +1038,61 @@ export const addCustomer = async (customer: Customer): Promise<ApiResponse<Custo
   return { success: true, data: customer };
 };
 
+// ============================================================================
+// CRM ANALYTICS
+// ============================================================================
+
+export const updateCustomer = async (id: string, updates: Partial<Customer>): Promise<boolean> => {
+    // Update Local Cache
+    const index = mockCustomers.findIndex(c => c.id === id);
+    if (index !== -1) {
+        mockCustomers[index] = { ...mockCustomers[index], ...updates };
+        
+        // Firestore Sync
+        const docRef = getUserDoc('customers', id);
+        if (docRef) await setDoc(docRef, cleanFirestoreData(mockCustomers[index]), { merge: true });
+        
+        return true;
+    }
+    return false;
+};
+
+export const getCustomerStats = async (customerId: string) => {
+    // Ensure sales are loaded
+    if (mockSales.length === 0) await getSales();
+    
+    const customerSales = mockSales.filter(s => s.customerId === customerId);
+
+    // Calculate Metrics
+    const totalSpent = customerSales.reduce((sum, s) => sum + s.totalAmount, 0);
+    const orderCount = customerSales.length;
+    
+    // Find Last Order Date
+    const lastOrder = customerSales.length > 0 
+        ? customerSales.sort((a,b) => new Date(b.dateCreated).getTime() - new Date(a.dateCreated).getTime())[0]
+        : null;
+
+    // Determine Favorite Product
+    const productCount: Record<string, number> = {};
+    customerSales.flatMap(s => s.items).forEach(i => {
+        productCount[i.recipeName] = (productCount[i.recipeName] || 0) + i.quantity;
+    });
+    
+    // Sort products by qty
+    const topProduct = Object.keys(productCount).sort((a,b) => productCount[b] - productCount[a])[0] || 'None';
+
+    const salesHistory = [...customerSales].sort((a,b) => new Date(b.dateCreated).getTime() - new Date(a.dateCreated).getTime());
+
+    return {
+        totalSpent,
+        orderCount,
+        lastOrderDate: lastOrder ? lastOrder.dateCreated : 'Never',
+        favoriteProduct: topProduct,
+        averageOrderValue: orderCount > 0 ? totalSpent / orderCount : 0,
+        salesHistory
+    };
+};
+
 export const getSales = async (forceRemote = false): Promise<ApiResponse<SalesRecord[]>> => {
   // READ-YOUR-WRITES BUFFER:
   // If recently written locally, return local data to prevent race condition flicker
@@ -1268,4 +1323,34 @@ export const getWeeklyRevenue = async (): Promise<{date: string, amount: number}
         }
     });
     return Object.keys(revenueMap).map(date => ({ date, amount: revenueMap[date] }));
+};
+
+// ============================================================================
+// BUDGETING
+// ============================================================================
+export const getMonthlyBudget = async (month: string): Promise<ApiResponse<Budget>> => {
+  const docId = `BUDGET-${month}`;
+  // Try Firestore
+  const docRef = getUserDoc('budgets', docId);
+  if (docRef) {
+      try {
+          const snap = await getDoc(docRef);
+          if (snap.exists()) {
+              return { success: true, data: snap.data() as Budget };
+          }
+      } catch (e) {
+          console.error("Error fetching budget:", e);
+      }
+  }
+  return { success: false, message: "No budget set" };
+};
+
+export const setMonthlyBudget = async (budget: Budget): Promise<ApiResponse<Budget>> => {
+  const docId = `BUDGET-${budget.month}`;
+  const docRef = getUserDoc('budgets', docId);
+  if (docRef) {
+      await setDoc(docRef, cleanFirestoreData(budget));
+      return { success: true, data: budget };
+  }
+  return { success: false, message: "Database connection failed" };
 };

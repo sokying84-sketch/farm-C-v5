@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { auth } from './services/firebase';
 import { getUserRole } from './services/sheetService';
@@ -7,7 +8,8 @@ import InventoryPage from './pages/Inventory';
 import FinancePage from './pages/Finance';
 import ReceivingPage from './pages/Receiving';
 import PackingPage from './pages/Packing';
-import { Utensils, Package, ShoppingCart, DollarSign, LayoutDashboard, LogOut, LayoutGrid, Box } from 'lucide-react';
+import CRMPage from './pages/CRM';
+import { Utensils, Package, ShoppingCart, DollarSign, LayoutDashboard, LogOut, LayoutGrid, Box, Users } from 'lucide-react';
 
 export default function App() {
   const [user, setUser] = useState<any>(null);
@@ -81,9 +83,14 @@ export default function App() {
 
         {/* SALES STAFF MENU */}
         {(role === 'SALES' || role === 'ADMIN') && (
-           <button onClick={() => setCurrentView('SALES')} className={`text-left p-3 rounded-lg font-bold flex items-center transition-colors ${currentView === 'SALES' ? 'bg-green-50 text-green-700' : 'text-slate-600 hover:bg-slate-50'}`}>
-              <ShoppingCart size={18} className="mr-3"/> Sales / POS
-           </button>
+           <>
+             <button onClick={() => setCurrentView('SALES')} className={`text-left p-3 rounded-lg font-bold flex items-center transition-colors ${currentView === 'SALES' ? 'bg-green-50 text-green-700' : 'text-slate-600 hover:bg-slate-50'}`}>
+                <ShoppingCart size={18} className="mr-3"/> Sales / POS
+             </button>
+             <button onClick={() => setCurrentView('CRM')} className={`text-left p-3 rounded-lg font-bold flex items-center transition-colors ${currentView === 'CRM' ? 'bg-green-50 text-green-700' : 'text-slate-600 hover:bg-slate-50'}`}>
+                <Users size={18} className="mr-3"/> CRM
+             </button>
+           </>
         )}
 
         {/* ADMIN ONLY MENU */}
@@ -105,9 +112,11 @@ export default function App() {
             {currentView === 'INVENTORY' && <InventoryPage />}
             {currentView === 'RECEIVING' && <ReceivingPage />}
             {currentView === 'PACKING' && <PackingPage />}
-
-            {/* FINANCE VIEWS */}
+            
+            {/* SALES & CRM VIEWS */}
             {currentView === 'SALES' && <FinancePage allowedTabs={['sales']} />}
+            {currentView === 'CRM' && <CRMPage />}
+            
             {currentView === 'FINANCE' && <FinancePage allowedTabs={['procurement', 'overview']} />}
             
             {currentView === 'DASHBOARD' && (

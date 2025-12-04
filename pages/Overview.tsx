@@ -1,23 +1,38 @@
 
 import React, { useEffect, useState } from 'react';
-import { fetchBatches, getFinishedGoods } from '../services/sheetService';
-import { MushroomBatch, BatchStatus, FinishedGood } from '../types';
-import { Truck, Droplets, Package, TrendingUp, ArrowRight, Activity } from 'lucide-react';
+import { fetchBatches, getFinishedGoods, getDailyProductionCosts, getLaborRate, getRawMaterialRate } from '../services/sheetService';
+import { MushroomBatch, BatchStatus, FinishedGood, DailyCostMetrics } from '../types';
+import { Truck, Droplets, Package, TrendingUp, ArrowRight, Activity, ClipboardList, DollarSign, Sprout, Clock } from 'lucide-react';
 
 const OverviewPage: React.FC = () => {
   const [batches, setBatches] = useState<MushroomBatch[]>([]);
   const [finishedGoods, setFinishedGoods] = useState<FinishedGood[]>([]);
+  const [costs, setCosts] = useState<DailyCostMetrics[]>([]);
   const [loading, setLoading] = useState(true);
+  const [laborRate, setLaborRate] = useState(0);
+  const [rawRate, setRawRate] = useState(0);
 
   useEffect(() => {
     const loadData = async () => {
-      const [batchRes, goodsRes] = await Promise.all([fetchBatches(), getFinishedGoods()]);
+      const [batchRes, goodsRes, costRes] = await Promise.all([
+          fetchBatches(), 
+          getFinishedGoods(),
+          getDailyProductionCosts()
+      ]);
+      
       if (batchRes.success && batchRes.data) {
         setBatches(batchRes.data);
       }
       if (goodsRes.success && goodsRes.data) {
         setFinishedGoods(goodsRes.data);
       }
+      if (costRes.success && costRes.data) {
+        // Sort costs by date descending
+        setCosts(costRes.data.sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
+      }
+      
+      setLaborRate(getLaborRate());
+      setRawRate(getRawMaterialRate());
       setLoading(false);
     };
     loadData();
@@ -28,7 +43,7 @@ const OverviewPage: React.FC = () => {
   const processingCount = batches.filter(b => b.status === BatchStatus.PROCESSING).length;
   const readyToPackCount = batches.filter(b => b.status === BatchStatus.DRYING_COMPLETE).length;
   
-  // Update: Count actual finished units available in stock
+  // Count actual finished units available in stock
   const finishedCount = finishedGoods.reduce((acc, item) => acc + item.quantity, 0);
   
   const totalWeight = batches.reduce((acc, b) => acc + b.netWeightKg, 0);
@@ -162,6 +177,126 @@ const OverviewPage: React.FC = () => {
           <div className="absolute -bottom-10 -right-10 text-earth-700 opacity-20">
             <TrendingUp size={150} />
           </div>
+        </div>
+      </div>
+
+      {/* Daily Production Cost Log (Batch-by-Batch) */}
+      <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+          <div className="p-6 border-b border-slate-100 flex flex-col md:flex-row md:items-center justify-between gap-4">
+              <h3 className="font-bold text-slate-800 text-lg flex items-center">
+                  <DollarSign size={20} className="mr-2 text-earth-600" />
+                  Daily Production Cost Log (Batch-by-Batch)
+              </h3>
+              <div className="flex gap-2">
+                  <span className="px-3 py-1 bg-green-50 text-green-700 rounded-lg text-xs font-bold border border-green-100 flex items-center">
+                      <Sprout size={12} className="mr-1"/> Raw Rate: RM {rawRate.toFixed(2)}/kg
+                  </span>
+                  <span className="px-3 py-1 bg-blue-50 text-blue-700 rounded-lg text-xs font-bold border border-blue-100 flex items-center">
+                      <Clock size={12} className="mr-1"/> Labor Rate: RM {laborRate.toFixed(2)}/hr
+                  </span>
+              </div>
+          </div>
+          <div className="overflow-x-auto">
+              <table className="w-full text-left text-sm">
+                  <thead className="bg-slate-50 text-slate-500 uppercase text-xs">
+                      <tr>
+                          <th className="px-6 py-4 font-bold">Date / Batch</th>
+                          <th className="px-6 py-4 font-bold">Processed</th>
+                          <th className="px-6 py-4 font-bold text-green-700">Raw Material</th>
+                          <th className="px-6 py-4 font-bold text-slate-600">Packaging</th>
+                          <th className="px-6 py-4 font-bold text-blue-700">Labor</th>
+                          <th className="px-6 py-4 font-bold text-red-700">Wastage</th>
+                          <th className="px-6 py-4 font-bold text-right">Total Cost</th>
+                      </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                      {costs.length === 0 ? (
+                          <tr><td colSpan={7} className="p-8 text-center text-slate-400">No cost logs recorded.</td></tr>
+                      ) : (
+                          costs.map((cost) => (
+                              <tr key={cost.id} className="hover:bg-slate-50 transition-colors group">
+                                  <td className="px-6 py-4">
+                                      <div className="font-bold text-slate-700">{new Date(cost.date).toLocaleDateString()}</div>
+                                      <div className="text-xs text-slate-400 font-mono uppercase group-hover:text-slate-600 transition-colors">{cost.referenceId}</div>
+                                  </td>
+                                  <td className="px-6 py-4">
+                                      {cost.weightProcessed > 0 && <div>{cost.weightProcessed} kg</div>}
+                                      {cost.processingHours > 0 && <div className="text-xs text-slate-500">{cost.processingHours} hrs</div>}
+                                      {!cost.weightProcessed && !cost.processingHours && <span className="text-slate-300">-</span>}
+                                  </td>
+                                  <td className="px-6 py-4 font-medium text-green-700">
+                                      {cost.rawMaterialCost > 0 ? `RM ${cost.rawMaterialCost.toFixed(2)}` : <span className="text-slate-300">-</span>}
+                                  </td>
+                                  <td className="px-6 py-4 font-medium text-slate-600">
+                                      {cost.packagingCost > 0 ? `RM ${cost.packagingCost.toFixed(2)}` : <span className="text-slate-300">-</span>}
+                                  </td>
+                                  <td className="px-6 py-4 font-medium text-blue-600">
+                                      {cost.laborCost > 0 ? `RM ${cost.laborCost.toFixed(2)}` : <span className="text-slate-300">-</span>}
+                                  </td>
+                                  <td className="px-6 py-4 font-medium text-red-600">
+                                      {cost.wastageCost > 0 ? `RM ${cost.wastageCost.toFixed(2)}` : <span className="text-slate-300">-</span>}
+                                  </td>
+                                  <td className="px-6 py-4 text-right font-bold text-slate-800 bg-slate-50/50">
+                                      RM {cost.totalCost.toFixed(2)}
+                                  </td>
+                              </tr>
+                          ))
+                      )}
+                  </tbody>
+              </table>
+          </div>
+      </div>
+
+      {/* Detailed Batch Log Table */}
+      <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+        <div className="p-6 border-b border-slate-100 flex justify-between items-center">
+          <h3 className="font-bold text-slate-800 flex items-center">
+            <ClipboardList size={20} className="mr-2 text-earth-600" />
+            Detailed Batch Log
+          </h3>
+          <span className="text-xs font-medium text-slate-400">All Active & Recent Batches</span>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-left text-sm">
+            <thead className="bg-slate-50 text-slate-500 uppercase text-xs">
+              <tr>
+                <th className="px-6 py-4 font-bold">Batch ID</th>
+                <th className="px-6 py-4 font-bold">Source Farm</th>
+                <th className="px-6 py-4 font-bold">Current Status</th>
+                <th className="px-6 py-4 font-bold">Date Received</th>
+                <th className="px-6 py-4 font-bold text-right">Net Weight</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {loading ? (
+                <tr><td colSpan={5} className="p-8 text-center text-slate-400">Loading batch data...</td></tr>
+              ) : batches.length === 0 ? (
+                <tr><td colSpan={5} className="p-8 text-center text-slate-400">No batch history found.</td></tr>
+              ) : (
+                batches.map((batch) => (
+                  <tr key={batch.id} className="hover:bg-slate-50 transition-colors">
+                    <td className="px-6 py-4 font-mono font-medium text-slate-600">{batch.id}</td>
+                    <td className="px-6 py-4 font-bold text-slate-800">{batch.sourceFarm}</td>
+                    <td className="px-6 py-4">
+                        <span className={`text-[10px] font-bold px-2 py-1 rounded-full uppercase tracking-wider ${
+                            batch.status === BatchStatus.RECEIVED ? 'bg-blue-100 text-blue-700' :
+                            batch.status === BatchStatus.PROCESSING ? 'bg-orange-100 text-orange-700' :
+                            batch.status === BatchStatus.DRYING_COMPLETE ? 'bg-purple-100 text-purple-700' :
+                            batch.status === BatchStatus.PACKED ? 'bg-green-100 text-green-700' :
+                            'bg-slate-100 text-slate-600'
+                        }`}>
+                            {batch.status}
+                        </span>
+                    </td>
+                    <td className="px-6 py-4 text-slate-500">
+                      {new Date(batch.dateReceived).toLocaleDateString()} <span className="text-xs opacity-70 ml-1">{new Date(batch.dateReceived).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
+                    </td>
+                    <td className="px-6 py-4 text-right font-mono font-bold text-slate-700">{batch.netWeightKg.toFixed(2)} kg</td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
         </div>
       </div>
     </div>

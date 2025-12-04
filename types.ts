@@ -133,6 +133,11 @@ export interface Customer {
   contact?: string;
   email?: string;
   address?: string;
+  // NEW CRM FIELDS
+  type?: 'B2B' | 'B2C'; 
+  status?: 'ACTIVE' | 'INACTIVE' | 'VIP';
+  notes?: string;
+  joinDate?: string;
 }
 
 export type SalesStatus = 'QUOTATION' | 'INVOICED' | 'SHIPPED' | 'PAID' | 'DELIVERED';
@@ -170,6 +175,14 @@ export interface DailyCostMetrics {
   wastageCost: number; 
   laborCost: number; // Added
   totalCost: number;
+}
+
+export interface Budget {
+  id: string;
+  month: string; // YYYY-MM
+  targetRevenue: number;
+  targetProfit: number;
+  maxWastageKg?: number;
 }
 
 export interface ApiResponse<T> {
